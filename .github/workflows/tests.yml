@@ -1,0 +1,56 @@
+name: FTP Data Quality Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  dq-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ftp_dq
+          POSTGRES_USER: qa_user
+          POSTGRES_PASSWORD: qa_password
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd="pg_isready -U qa_user -d ftp_dq"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5433
+      DB_NAME: ftp_dq
+      DB_USER: qa_user
+      DB_PASSWORD: qa_password
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Apply SQL scripts in order
+        run: |
+          export PGPASSWORD=qa_password
+          for f in sql/*.sql; do
+            echo "Applying $f ..."
+            psql -h localhost -p 5433 -U qa_user -d ftp_dq -f "$f"
+          done
+
+      - name: Run pytest
+        run: pytest -v --tb=short
